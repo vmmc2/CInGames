@@ -1,4 +1,4 @@
-# projeto_ihs
+# Interface Hardware-Software (IHS) Project
 
 ## Getting Started
 

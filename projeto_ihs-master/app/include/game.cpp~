@@ -1,0 +1,343 @@
+#include "game.h"
+#include <iostream>
+
+Game::Game(int width, int height, int fps, char *title){
+    this->width = width;
+    this->height = height;
+    this->FPS = fps;
+    this->title = title;
+
+    setBallPosition(width/2, height/2);
+    setBallRadius(raiobola);
+    
+    placar1 = 0;
+    placar2 = 0;
+    ballSpeed = 10;
+    collision_count = 0;
+
+	dev = open("/dev/de2i150_altera", O_RDWR);
+
+    srand(time(NULL));
+
+    setBallMovement(randomMovement());
+}
+
+Game::~Game(){
+    al_destroy_font(scoreBoard);
+    al_destroy_display(mainWindow);
+    al_destroy_event_queue(eventQueue);
+}
+
+bool Game::coreInit(){
+    al_init_image_addon();
+
+    if(!al_init()){
+        fprintf(stderr, "Allegro couldn't be started\n");
+        return false;
+    }
+
+    if(!al_init_image_addon()){
+        fprintf(stderr, "Allegro couldn't init add-on allegro_image\n");
+        return false;
+    }
+
+    if(!al_init_font_addon()){
+        fprintf(stderr, "Allegro couldn't init add-on allegro_font\n");
+        return false;
+    }
+
+    if(!al_init_ttf_addon()){
+        fprintf(stderr, "Allegro couldn't init add-on allegro_ttf\n");
+        return false;
+    }
+
+    if(!al_init_primitives_addon()){
+        fprintf(stderr, "Allegro couldn't init add-on allegro_primitives\n");
+        return false;
+    }
+
+    eventQueue = al_create_event_queue();
+    if(!eventQueue){
+        fprintf(stderr, "Allegro couldn't start event queue\n");
+        return false;
+    }
+
+    if (!al_install_keyboard()){
+        fprintf(stderr, "Falha ao inicializar teclado.\n");
+        return false;
+    }
+    return true;
+}
+
+bool Game::windowInit(){
+    // window and event queue creation
+    mainWindow = al_create_display(width, height);
+    if(!mainWindow){
+        fprintf(stderr, "Allegro couldn't create window\n");
+        return false;
+    }
+    al_set_window_title(mainWindow, title);
+
+    // register window on the event queue
+    al_register_event_source(eventQueue, al_get_display_event_source(mainWindow));
+    al_register_event_source(eventQueue, al_get_keyboard_event_source());
+
+    return true;
+}
+
+bool Game::fontInit(int size){
+    
+    scoreBoard = al_load_font("resources/score.ttf", size, 0);
+
+    if(!scoreBoard){
+        fprintf(stderr, "Allegro couldn't load the font\n");
+        return false;
+    } 
+
+    return true;
+}
+
+void Game::startTimer(){
+    startingTime = al_get_time();
+}
+
+double Game::getTimer(){
+    return (al_get_time() - startingTime);
+}
+
+void Game::FPSLimit(){
+    if(getTimer() < 1.0/FPS){
+        al_rest((1.0 / FPS) - getTimer());
+    }
+}
+
+ALLEGRO_DISPLAY* Game::getWindow(){
+    return mainWindow;
+}
+
+ALLEGRO_EVENT_QUEUE* Game::getEventQueue(){
+    return eventQueue;
+}
+
+ALLEGRO_EVENT Game::getEvent(){
+    return allegroEvent;
+}
+
+bool Game::isEventQueueEmpty(){
+    return al_is_event_queue_empty(eventQueue);
+}
+
+void Game::waitForEvent(){
+    al_wait_for_event(eventQueue, &allegroEvent);
+}
+
+void Game::flipAndClear(){
+    al_flip_display();
+    al_clear_to_color(al_map_rgb(0, 0, 0));
+    FPSLimit();
+}
+
+void Game::drawMiddleLine(){
+    int newTam = 0;
+    for(int x = 1; x <= lineParts; x++){
+        al_draw_line(width/2.0, newTam, width/2.0, x * (height/lineParts), al_map_rgb(255, 255, 255), 0);
+        newTam = (x * (height/lineParts)) + spacingParts;
+    }
+}
+
+Object Game::getBall(){
+    return ball;
+}
+
+Object Game::getPlayer(int id){
+    if(id >= qtPlayers || id < 0){
+        fprintf(stderr, "Invalid object id\n");
+        exit(-1);
+    }
+
+    return players[id];
+}
+
+void Game::drawBall(){
+    al_draw_filled_circle(ball.x, ball.y, ballRadius, al_map_rgb(255, 255, 255));
+}
+
+void Game::drawPlayers(){
+    for(int x = 0; x < qtPlayers; x++){
+        al_draw_rectangle(players[x].x, players[x].y - tamPlayer, players[x].x, players[x].y + tamPlayer, al_map_rgb(255, 255, 255), 0);
+    }
+}
+
+void Game::setBallPosition(int x, int y){
+    this->ball.x = x;
+    this->ball.y = y;
+}
+
+void Game::setPlayerPosition(int id, int x, int y){
+    if(id < 0 || id >= qtPlayers){
+        exit(-1);
+    }
+    players[id].x = x;
+    players[id].y = y;
+}
+
+void Game::setBallRadius(double radius){
+    ballRadius = radius;
+}
+
+void Game::checkGoal(){
+    if((ball.x + ballRadius <= 0)){
+        addScore(1); // player 2 goal
+    }else if(ball.x + ballRadius >= width){
+        addScore(0); // player 1 goal
+    }
+}
+
+bool Game::checkPlayerCollision(int id, int movement){
+    if(movement == UP && getPlayer(id).y - tamPlayer >= 0) return false;
+    if(movement == DOWN && getPlayer(id).y + tamPlayer <= height) return false;
+
+    return true;
+}
+
+bool Game::checkCollision(){
+    int rand = 0;
+
+    if((ball.y - ballRadius) <= 0){ // top corner
+        if(getBallMovement() == UPLEFT){
+            rand = DOWNLEFT;
+        }else if(getBallMovement() == UPRIGHT){
+            rand = DOWNRIGHT;
+        }
+        setBallMovement(rand);
+        return true;
+    }else if((ball.y + ballRadius) >= height){ // bottom corner
+        if(getBallMovement() == DOWNLEFT){
+            rand = UPLEFT;
+        }else if(getBallMovement() == DOWNRIGHT){
+            rand = UPRIGHT;
+        }
+        setBallMovement(rand);
+        return true;
+    }
+    if((ball.x - ballRadius <= players[0].x) && (ball.y - ballRadius <= (players[0].y + tamPlayer)) && (ball.y + ballRadius >= (players[0].y - tamPlayer))){
+        while(rand == NO_MOVEMENT || rand == LEFT || rand == UPLEFT){
+            rand = randomMovement();
+        }
+        setBallMovement(rand);
+        return true;
+    }
+    if((ball.x + ballRadius >= players[1].x) && (ball.y - ballRadius <= (players[1].y + tamPlayer)) && (ball.y + ballRadius >= (players[1].y - tamPlayer))){
+        while(rand == NO_MOVEMENT || rand == RIGHT || rand == UPRIGHT){
+            rand = randomMovement();
+        }
+        setBallMovement(rand);
+        return true;
+    }
+    // to do: colision with player
+}
+
+void Game::setPlayerMovement(int id, int movement){
+    players[id].movement = movement;
+}
+
+void Game::setBallMovement(int movement){
+    ball.movement = movement;
+}
+
+int Game::getPlayerMovement(int id){
+    return players[id].movement;
+}
+
+int Game::getBallMovement(){
+    return ball.movement;
+}
+
+void Game::moveBall(){
+    if(ball.movement == LEFT){
+        ball.x -= ballSpeed;
+    }else if(ball.movement == RIGHT){
+        ball.x += ballSpeed;
+    }else if(ball.movement == UPLEFT){
+        ball.x -= ballSpeed/2;
+        ball.y -= ballSpeed/2;
+    }else if(ball.movement == DOWNLEFT){
+        ball.x -= ballSpeed/2;
+        ball.y += ballSpeed/2;
+    }else if(ball.movement == UPRIGHT){
+        ball.x += ballSpeed/2;
+        ball.y -= ballSpeed/2;
+    }else if(ball.movement == DOWNRIGHT){
+        ball.x += ballSpeed/2;
+        ball.y += ballSpeed/2;
+    }else if(ball.movement == NO_MOVEMENT){}
+    
+    if(!checkCollision()){
+        checkGoal();
+        if(placar1 >= 10 || placar2 >= 10){
+        	exit(-1);
+        }
+    }else{
+        collision_count++;
+        if(collision_count == collision_nheco){
+            collision_count = 0;
+            ballSpeed += 1;
+        }
+    }
+}
+
+void Game::addScore(int id){
+/*	unsigned char hexdigit[] = {0x3F, 0x06, 0x5B, 0x4F,
+	0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+
+	uint32_t ans = 0;
+    
+    if(placar1 < 10){
+		ans = ans | ~(hexdigit[0]);
+		//ans = ans << 8;
+		//ans = ans | ~(hexdigit[placar1]);
+	}else{
+    	//ans = ans | ~(hexdigit[1]);
+		//ans = ans << 8;
+		//ans = ans | ~(hexdigit[0]);
+	}
+	
+	if(placar2 < 10){
+    	//ans = ans << 8;
+    	//ans = ans | ~(hexdigit[0]);
+		//ans = ans << 8;
+		//ans = ans | ~(hexdigit[placar2]);
+    }else{
+    	//ans = ans << 8;
+    	//ans = ans | ~(hexdigit[1]);
+		//ans = ans << 8;
+		//ans = ans | ~(hexdigit[0]);
+    }
+    
+    std::cout << ans << std::endl;
+    
+    write(dev, &ans, DISPLAY_7SEG);
+*/
+	if(id == 0) placar1++;
+    else if(id == 1) placar2++;
+    
+    setBallPosition(width/2, height/2);
+    setBallMovement(randomMovement());
+    ballSpeed = 10;
+    collision_count = 0;
+}
+
+void Game::drawScoreBoard(){
+    char str1[3] = "";
+    char str2[3] = "";
+
+    sprintf(str1, "%d", placar1);
+    sprintf(str2, "%d", placar2);
+
+    al_draw_text(scoreBoard, al_map_rgb(255, 255, 255), width/2 - 20, 10, ALLEGRO_ALIGN_CENTER, str1);
+    al_draw_text(scoreBoard, al_map_rgb(255, 255, 255), width/2 + 20, 10, ALLEGRO_ALIGN_CENTER, str2);
+}
+
+int Game::randomMovement(){
+    return ((rand() % 6) + 3);
+}

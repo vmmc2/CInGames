@@ -7,7 +7,11 @@ Stefan Michael Blawid
 
 # Participants
 Victor Miguel de Morais Costa - vmmc2
+
 Zilde Souto Maior Neto - zsmn
+
 Pedro Nogueira Coutinho - pnc
+
 Victor Hugo Meirelles Silva - vhms
+
 Riei Joaquim Matos Rodrigues - rjmr

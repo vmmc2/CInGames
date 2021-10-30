@@ -5,7 +5,7 @@ You can find more info clicking into the project folder where you can find a mor
 # Teacher
 Stefan Michael Blawid
 
-# Participants
+# Group Members
 Victor Miguel de Morais Costa - vmmc2
 
 Zilde Souto Maior Neto - zsmn
